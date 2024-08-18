@@ -18,7 +18,7 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 protoc --go_out=. --go-grpc_out=. path/to/your/file.proto
 ```
 
-# 
+# How to
 
 1. First write your gRPC service
     * Write your contract (what your service does?)
@@ -47,3 +47,21 @@ protoc --go_out=. --go-grpc_out=. path/to/your/file.proto
 4. Write your client code 
     1. Start a new connection using grpc.NewClient(....) with the server running
     2. Take dependency of the gRPC service. Call that to initiate a new client.
+
+
+# gRPC
+* gRPC as a preferred implementation of RPC.
+* Protocol buffers as data interchange format (as the encoding format)
+    * strongly typed 
+* High performant (efficient binary encoding format)    
+* Built on top of HTTP/2 to provide high perf foundation at scale.
+    * Multiplexing
+    * Strean prioritization
+    * Binary protocol
+    * Server push
+    * Allows multiple streams of messages over a single long lived TCP connection
+    * gRPC is 5 times faster than JSON
+* Requires low level access to http/2 primitives (No browsers support it yet)
+
+# Flow
+![alt text](image.png)
