@@ -48,11 +48,14 @@ protoc --go_out=. --go-grpc_out=. path/to/your/file.proto
     1. Start a new connection using grpc.NewClient(....) with the server running
     2. Take dependency of the gRPC service. Call that to initiate a new client.
 
-
 # gRPC
 * gRPC as a preferred implementation of RPC.
 * Protocol buffers as data interchange format (as the encoding format)
-    * strongly typed 
+    1. strongly typed  
+    2. Specify required/optional field 
+    3. Above 2 benefits vs JSON messages with key-value pairs that aren't checked until you get to the receiving end.
+    4. Specify procedures you expect to expose
+    5. Specify language for communication
 * High performant (efficient binary encoding format)    
 * Built on top of HTTP/2 to provide high perf foundation at scale.
     * Multiplexing
