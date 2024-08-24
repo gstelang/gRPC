@@ -69,3 +69,9 @@ protoc --go_out=. --go-grpc_out=. path/to/your/file.proto
 # Flow
 * Screen grabbed from bytebytego youtube video
 ![alt text](image.png)
+
+
+# 3 types of gRPC connection
+1. insecure
+2. server side TLS - only server provides its certificate to client. Basically server does not care who is calling.
+3. mTLS - both client/server needs to be provide certs. 
