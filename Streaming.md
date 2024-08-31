@@ -1,6 +1,6 @@
 # Server configuration with window size
 
-```
+```go
 opts := []grpc.ServerOption {
     // This setting is for each individual stream i.e amount of data that can be sent without waiting for ack.
     grpc.InitialWindowSize(65536),    // 64KB
@@ -20,7 +20,7 @@ opts := []grpc.ServerOption {
 # Flow control: Dynamic rate limiting (Simple)
 * Adjust the sending rate based on the frequency of flow control errors.
 
-```
+```go
 if err != nil {
     if err == io.EOF {
         return nil // Client has closed the stream
@@ -182,7 +182,7 @@ if atomic.LoadInt32(&s.activeClients) >= s.maxClients {
 
 ```go
 
- package main
+package main
 
 import (
 	"fmt"
@@ -299,6 +299,7 @@ func main() {
 <details>
 <summary> Expand code </summary>
 ```go
+
 package main
 
 import (
@@ -398,7 +399,7 @@ type LogStore interface {
 	GetOrCreateLogChannel(jobID string) (<-chan *pb.LogEntry, error)
 }
 ```
-</summary>
+</details>
 
 # Flow control: Ring buffer and a channel
 
