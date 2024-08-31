@@ -75,3 +75,43 @@ protoc --go_out=. --go-grpc_out=. path/to/your/file.proto
 1. insecure
 2. server side TLS - only server provides its certificate to client. Basically server does not care who is calling.
 3. mTLS - both client/server needs to be provide certs. 
+
+# gRPC modes
+1. Unary RPC (Req -> resp. Client sync waits)
+2. Server streaming RPC (exactly like websockets)
+3. Client streaming RPC (upload)
+4. Bidirectional (chatting)
+
+# gRPC deep dive
+
+* Natively implemented in 3 langauges - Java, Go and C. Other languages call C (gRPC-C-Core)
+* protobuf support are provided by language wrappers (not core).
+* Core stack is very lean. 
+* Most of the features are provided by pluggable filters.
+    - Auth, Tracing, name/service resolution, LB, compression, message size checks, RPC deadlines, etc
+* Works with many transports
+    - By default, uses HTTP2 transport
+    - Other implementations: QUIC, Cronet, inprocess and more. 
+* Designed for performance
+
+<img width="986" alt="Screenshot 2024-08-30 at 10 49 49 PM" src="https://github.com/user-attachments/assets/0f03dae5-55f0-4866-ba7a-c6a113b92996">
+ 
+* Client <=Channel=> Target
+* Channel is a collection of subchannels. Subchannel maps to a connection. 
+* A call is bound to a channel. Multiple calls can share the same Channel.
+* Operations
+  * Send/receive initial/trailing metadata (Exactly once)
+  * Send/Receive message (Zero or more by Client and Server)
+* Client and server perform operation in batches.
+* When a batch is finished, this event is notified via a completion queue.
+
+<img width="1008" alt="Screenshot 2024-08-30 at 11 15 16 PM" src="https://github.com/user-attachments/assets/8b5e389e-a61f-42a6-8656-1c675ad28783">
+
+# Long lived RPCs
+* RPCs that last minutes, hours and days
+* Watches/Notifications (Reduce polling, reduced latency, Hanging "GET")
+* Load balancing decisions are made per RPC and they mostly stay lifetime.
+* MAX_CONNECTION_AGE can accumulate connections.
+* Issues to live with: Network failures.
+* Load balancing: Have server occasionally close RPC (MAX_CONNECTION_AGE + MAX_CONNECTION_AGE_GRACE)
+* writes are not acked
