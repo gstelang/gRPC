@@ -9,6 +9,10 @@ opts := []grpc.ServerOption {
     // This limits the number of concurrent streams per connection, which can help manage resource usage.
     grpc.MaxConcurrentStreams(1000),
 }
+
+// sets the maximum message size a server can receive or send
+grpc.MaxRecvMsgSize(maxSize)
+grpc.MaxSendMsgSize(maxSize)
 ```
 
 * Pros: High throughput. Allows more data to be sent without waiting for ack.
