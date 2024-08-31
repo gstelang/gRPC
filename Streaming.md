@@ -296,8 +296,10 @@ func main() {
 1. Set the max buffer size.
 2. Determine how often you want to flush the buffer. If the buffer reaches its maximum size, it triggers a flush.
 
-<details>
-<summary> Expand code </summary>
+
+<details> 
+<summary>Expand code</summary>
+
 ```go
 
 package main
