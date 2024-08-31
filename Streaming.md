@@ -291,6 +291,117 @@ func main() {
 ```
 </details>
 
+# Flow control: Buffering
+1. Set the max buffer size.
+2. Determine how often you want to flush the buffer. If the buffer reaches its maximum size, it triggers a flush.
+
+<details>
+<summary> Expand code </summary>
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"sync"
+
+	pb "path/to/your/proto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+type server struct {
+	pb.UnimplementedJobWorkerServer
+	logStore     LogStore
+	clientStreams map[string]map[string]pb.JobWorker_StreamLogsServer
+	streamsMu    sync.RWMutex
+}
+
+func (s *server) StreamLogs(req *pb.StreamLogsRequest, stream pb.JobWorker_StreamLogsServer) error {
+	jobID := req.GetJobId()
+	clientID := fmt.Sprintf("%p", stream) // Use pointer address as a unique client identifier
+
+	// Fetch existing logs
+	logs, err := s.logStore.GetLogs(jobID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to get logs: %v", err)
+	}
+
+	// Send existing logs
+	for _, logEntry := range logs {
+		if err := stream.Send(&pb.StreamLogsResponse{LogEntry: logEntry}); err != nil {
+			return status.Errorf(codes.Internal, "failed to send log entry: %v", err)
+		}
+	}
+
+	// Get or create log channel
+	logCh, err := s.logStore.GetOrCreateLogChannel(jobID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to get log channel: %v", err)
+	}
+
+	// Register this client's stream
+	s.addStream(jobID, clientID, stream)
+	defer s.removeStream(jobID, clientID)
+
+	// Context for handling client disconnection
+	ctx := stream.Context()
+
+	// Stream new logs
+	for {
+		select {
+		case logEntry, ok := <-logCh:
+			if !ok {
+				// Channel closed, job finished
+				return status.Error(codes.OK, "job finished")
+			}
+			if err := stream.Send(&pb.StreamLogsResponse{LogEntry: logEntry}); err != nil {
+				log.Printf("failed to send log entry to client %s: %v", clientID, err)
+				return status.Errorf(codes.Internal, "failed to send log entry: %v", err)
+			}
+		case <-ctx.Done():
+			// Client disconnected
+			return status.Error(codes.Canceled, "client disconnected")
+		}
+	}
+}
+
+func (s *server) addStream(jobID, clientID string, stream pb.JobWorker_StreamLogsServer) {
+	s.streamsMu.Lock()
+	defer s.streamsMu.Unlock()
+
+	if s.clientStreams == nil {
+		s.clientStreams = make(map[string]map[string]pb.JobWorker_StreamLogsServer)
+	}
+	if s.clientStreams[jobID] == nil {
+		s.clientStreams[jobID] = make(map[string]pb.JobWorker_StreamLogsServer)
+	}
+	s.clientStreams[jobID][clientID] = stream
+}
+
+func (s *server) removeStream(jobID, clientID string) {
+	s.streamsMu.Lock()
+	defer s.streamsMu.Unlock()
+
+	if streams, ok := s.clientStreams[jobID]; ok {
+		delete(streams, clientID)
+		if len(streams) == 0 {
+			delete(s.clientStreams, jobID)
+		}
+	}
+}
+
+type LogStore interface {
+	GetLogs(jobID string) ([]*pb.LogEntry, error)
+	GetOrCreateLogChannel(jobID string) (<-chan *pb.LogEntry, error)
+}
+```
+</summary>
+
+# Flow control: Ring buffer and a channel
+
+
 # Flow control: Batching
 * Group multiple log entries into a single message to reduce overhead.
 
@@ -299,3 +410,4 @@ func main() {
 
 # Client sides considerations
 1. Ensure receive buffers are large enough to handle the incoming data rate. How? 
+
