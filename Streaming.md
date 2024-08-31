@@ -165,7 +165,7 @@ func main() {
 
 
 # Flow control: Dynamic rate limiting: Connection limiting
-```
+```go
 type logServer struct {
     // ...
     activeClients   int32
@@ -178,7 +178,8 @@ if atomic.LoadInt32(&s.activeClients) >= s.maxClients {
 ```
 
 <details> 
-	<summary> Expand code</summary>
+<summary>Expand code</summary>
+
 ```go
 
  package main
