@@ -313,79 +313,120 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	pb "path/to/your/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
+const (
+	maxBufferSize = 1000 // Maximum number of log entries to buffer per client
+	flushInterval = 1 * time.Second
+)
+
 type server struct {
 	pb.UnimplementedJobWorkerServer
-	logStore     LogStore
-	clientStreams map[string]map[string]pb.JobWorker_StreamLogsServer
-	streamsMu    sync.RWMutex
+	logStore      LogStore
+	clientStreams map[string]map[string]*clientStreamInfo
+	streamsMu     sync.RWMutex
+}
+
+type clientStreamInfo struct {
+	stream pb.JobWorker_StreamLogsServer
+	buffer []*pb.LogEntry
+	mu     sync.Mutex
 }
 
 func (s *server) StreamLogs(req *pb.StreamLogsRequest, stream pb.JobWorker_StreamLogsServer) error {
 	jobID := req.GetJobId()
-	clientID := fmt.Sprintf("%p", stream) // Use pointer address as a unique client identifier
+	clientID := fmt.Sprintf("%p", stream)
 
-	// Fetch existing logs
 	logs, err := s.logStore.GetLogs(jobID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to get logs: %v", err)
 	}
 
-	// Send existing logs
 	for _, logEntry := range logs {
 		if err := stream.Send(&pb.StreamLogsResponse{LogEntry: logEntry}); err != nil {
 			return status.Errorf(codes.Internal, "failed to send log entry: %v", err)
 		}
 	}
 
-	// Get or create log channel
 	logCh, err := s.logStore.GetOrCreateLogChannel(jobID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to get log channel: %v", err)
 	}
 
-	// Register this client's stream
-	s.addStream(jobID, clientID, stream)
+	clientInfo := &clientStreamInfo{
+		stream: stream,
+		buffer: make([]*pb.LogEntry, 0, maxBufferSize),
+	}
+	s.addStream(jobID, clientID, clientInfo)
 	defer s.removeStream(jobID, clientID)
 
-	// Context for handling client disconnection
 	ctx := stream.Context()
+	flushTicker := time.NewTicker(flushInterval)
+	defer flushTicker.Stop()
 
-	// Stream new logs
 	for {
 		select {
 		case logEntry, ok := <-logCh:
 			if !ok {
-				// Channel closed, job finished
+				s.flushBuffer(clientInfo)
 				return status.Error(codes.OK, "job finished")
 			}
-			if err := stream.Send(&pb.StreamLogsResponse{LogEntry: logEntry}); err != nil {
-				log.Printf("failed to send log entry to client %s: %v", clientID, err)
-				return status.Errorf(codes.Internal, "failed to send log entry: %v", err)
-			}
+			s.bufferLog(clientInfo, logEntry)
+		case <-flushTicker.C:
+			s.flushBuffer(clientInfo)
 		case <-ctx.Done():
-			// Client disconnected
+			s.flushBuffer(clientInfo)
 			return status.Error(codes.Canceled, "client disconnected")
 		}
 	}
 }
 
-func (s *server) addStream(jobID, clientID string, stream pb.JobWorker_StreamLogsServer) {
+func (s *server) bufferLog(clientInfo *clientStreamInfo, logEntry *pb.LogEntry) {
+	clientInfo.mu.Lock()
+	defer clientInfo.mu.Unlock()
+
+	clientInfo.buffer = append(clientInfo.buffer, logEntry)
+	if len(clientInfo.buffer) >= maxBufferSize {
+		s.flushBuffer(clientInfo)
+	}
+}
+
+func (s *server) flushBuffer(clientInfo *clientStreamInfo) {
+	clientInfo.mu.Lock()
+	defer clientInfo.mu.Unlock()
+
+	if len(clientInfo.buffer) == 0 {
+		return
+	}
+
+	for _, logEntry := range clientInfo.buffer {
+		if err := clientInfo.stream.Send(&pb.StreamLogsResponse{LogEntry: logEntry}); err != nil {
+			log.Printf("failed to send buffered log entry: %v", err)
+			// Consider implementing a retry mechanism or handling disconnection here
+			return
+		}
+	}
+
+	// Clear the buffer after successful send
+	clientInfo.buffer = clientInfo.buffer[:0]
+}
+
+func (s *server) addStream(jobID, clientID string, clientInfo *clientStreamInfo) {
 	s.streamsMu.Lock()
 	defer s.streamsMu.Unlock()
 
 	if s.clientStreams == nil {
-		s.clientStreams = make(map[string]map[string]pb.JobWorker_StreamLogsServer)
+		s.clientStreams = make(map[string]map[string]*clientStreamInfo)
 	}
 	if s.clientStreams[jobID] == nil {
-		s.clientStreams[jobID] = make(map[string]pb.JobWorker_StreamLogsServer)
+		s.clientStreams[jobID] = make(map[string]*clientStreamInfo)
 	}
-	s.clientStreams[jobID][clientID] = stream
+	s.clientStreams[jobID][clientID] = clientInfo
 }
 
 func (s *server) removeStream(jobID, clientID string) {
