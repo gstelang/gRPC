@@ -408,7 +408,8 @@ type LogStore interface {
 </details>
 
 # Flow control: Ring buffer and a channel
-
+1. Ring buffer on the server side library code such that most recent entries (1000) are stored.
+2. Unbuffered channel is for processing real time.
 
 # Flow control: Batching
 * Group multiple log entries into a single message to reduce overhead.
