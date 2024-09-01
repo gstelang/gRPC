@@ -1,3 +1,23 @@
+# Client configuration
+```go
+import (
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/keepalive"
+    "time"
+)
+
+func main() {
+    server := grpc.NewServer(
+        grpc.KeepaliveParams(keepalive.ServerParameters{
+            MaxConnectionIdle: 30 * time.Minute, // Disconnect after 30 minutes of inactivity
+            Time:              10 * time.Minute, // Send keepalive pings every 10 minutes
+            Timeout:           20 * time.Second, // Wait 20 seconds for keepalive ping ack
+        }),
+    )
+
+    // Register services and start the server
+}
+```
 # Server configuration with window size
 
 ```go
